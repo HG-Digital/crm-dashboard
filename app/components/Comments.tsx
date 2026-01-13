@@ -1,24 +1,14 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { createClient } from '@supabase/supabase-js'
+import { supabase } from '@/lib/supabase/client'
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
-
-/* ================= TYPES ================= */
-
-type CommentRow = {
+type CommentUI = {
   id: string
   content: string
   created_at: string
-  updated_at: string | null
   author_id: string
-  profiles: {
-    name: string
-  }[] | null
+  author_name: string
 }
 
 type Props = {
@@ -26,28 +16,32 @@ type Props = {
   entityId: string
 }
 
-/* ================= COMPONENT ================= */
-
 export default function Comments({ entityType, entityId }: Props) {
-  const [comments, setComments] = useState<CommentRow[]>([])
+  const [comments, setComments] = useState<CommentUI[]>([])
   const [text, setText] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [user, setUser] = useState<any>(null)
   const [loading, setLoading] = useState(false)
 
-  /* 🔐 SESSION LADEN (EXTREM WICHTIG FÜR RLS) */
+  /* 🔐 AUTH */
   useEffect(() => {
-    const loadSession = async () => {
-      const { data } = await supabase.auth.getSession()
+    supabase.auth.getSession().then(({ data }) => {
       setUser(data.session?.user ?? null)
-    }
+    })
 
-    loadSession()
+    const { data } = supabase.auth.onAuthStateChange((_e, session) => {
+      setUser(session?.user ?? null)
+    })
+
+    return () => data.subscription.unsubscribe()
   }, [])
 
-  /* 📥 KOMMENTARE LADEN */
+  /* 📥 LOAD COMMENTS (BOMBENSICHER) */
   const loadComments = async () => {
-    if (!entityId) return
+    if (!entityId) {
+      setComments([])
+      return
+    }
 
     const { data, error } = await supabase
       .from('comments')
@@ -55,61 +49,58 @@ export default function Comments({ entityType, entityId }: Props) {
         id,
         content,
         created_at,
-        updated_at,
         author_id,
-        profiles (
-          name
-        )
+        profiles ( name )
       `)
       .eq('entity_type', entityType)
       .eq('entity_id', entityId)
       .order('created_at', { ascending: true })
 
-    if (error) {
-      console.error('Load comments error:', error)
+    if (error || !Array.isArray(data)) {
+      console.error('❌ Load comments failed:', error, data)
+      setComments([])
       return
     }
 
-    setComments(data ?? [])
+    /* 🔥 NORMALISIERUNG – DAS IST DER FIX */
+    const normalized: CommentUI[] = data.map((row: any) => {
+      const profile = Array.isArray(row.profiles)
+        ? row.profiles[0]
+        : row.profiles
+
+      return {
+        id: row.id,
+        content: row.content,
+        created_at: row.created_at,
+        author_id: row.author_id,
+        author_name: profile?.name || 'Unbekannt',
+      }
+    })
+
+    setComments(normalized)
   }
 
   useEffect(() => {
     loadComments()
   }, [entityId])
 
-  /* ➕ / ✏️ SPEICHERN */
-  const addOrUpdateComment = async () => {
+  /* ➕ / ✏️ SAVE */
+  const saveComment = async () => {
     if (!text.trim() || !user) return
-
     setLoading(true)
 
     if (editingId) {
-      const { error } = await supabase
+      await supabase
         .from('comments')
-        .update({
-          content: text,
-          updated_at: new Date().toISOString(),
-        })
+        .update({ content: text })
         .eq('id', editingId)
         .eq('author_id', user.id)
-
-      if (error) console.error('Update error:', error)
     } else {
-      const { error } = await supabase
-        .from('comments')
-        .insert({
-          entity_type: entityType,
-          entity_id: entityId,
-          content: text,
-          author_id: user.id, // 🔥 MUSS auth.uid() SEIN
-        })
-        .select()
-
-      if (error) {
-        console.error('Insert error:', error)
-        setLoading(false)
-        return
-      }
+      await supabase.from('comments').insert({
+        entity_type: entityType,
+        entity_id: entityId,
+        content: text,
+      })
     }
 
     setText('')
@@ -118,17 +109,14 @@ export default function Comments({ entityType, entityId }: Props) {
     loadComments()
   }
 
-  /* 🗑️ LÖSCHEN */
+  /* 🗑️ DELETE */
   const deleteComment = async (id: string) => {
     if (!user) return
-
-    const { error } = await supabase
+    await supabase
       .from('comments')
       .delete()
       .eq('id', id)
       .eq('author_id', user.id)
-
-    if (error) console.error('Delete error:', error)
 
     loadComments()
   }
@@ -137,7 +125,7 @@ export default function Comments({ entityType, entityId }: Props) {
 
   return (
     <div className="mt-6 bg-gray-900 rounded-xl p-4">
-      <h3 className="font-bold text-lg mb-4 text-white">
+      <h3 className="text-white font-bold text-lg mb-4">
         💬 Interne Kommentare
       </h3>
 
@@ -148,9 +136,7 @@ export default function Comments({ entityType, entityId }: Props) {
             className="bg-gray-800 rounded-lg p-3 text-sm text-white"
           >
             <div className="flex justify-between mb-1">
-              <span className="font-semibold">
-                {c.profiles?.[0]?.name ?? 'Unbekannt'}
-              </span>
+              <span className="font-semibold">{c.author_name}</span>
               <span className="text-xs opacity-60">
                 {new Date(c.created_at).toLocaleString()}
               </span>
@@ -186,18 +172,14 @@ export default function Comments({ entityType, entityId }: Props) {
       <textarea
         value={text}
         onChange={(e) => setText(e.target.value)}
-        placeholder={
-          user
-            ? 'Kommentar schreiben…'
-            : 'Bitte einloggen um zu kommentieren'
-        }
         className="w-full p-3 rounded bg-white text-black mb-3"
         rows={3}
         disabled={!user || loading}
+        placeholder={user ? 'Kommentar schreiben…' : 'Bitte einloggen'}
       />
 
       <button
-        onClick={addOrUpdateComment}
+        onClick={saveComment}
         disabled={!user || loading}
         className="px-4 py-2 bg-blue-600 rounded text-white font-semibold disabled:opacity-50"
       >

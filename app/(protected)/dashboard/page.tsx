@@ -11,11 +11,13 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
+/* ================= TYPES ================= */
+
 type Lead = {
   id: string;
   status: string;
   created_at: string;
-  last_contact?: string;
+  last_contact?: string | null;
 };
 
 type CalendarEntry = {
@@ -26,25 +28,30 @@ type CalendarEntry = {
   end_time: string;
 };
 
+/* ================= CONSTS ================= */
+
 const PEOPLE = [
   "Richard Gumpinger",
   "Simon Höld",
   "Bennet Wylezol",
 ];
 
+/* ================= PAGE ================= */
+
 export default function DashboardPage() {
   const router = useRouter();
 
   const [leads, setLeads] = useState<Lead[]>([]);
   const [todayEntries, setTodayEntries] = useState<CalendarEntry[]>([]);
-  const [checkingAuth, setCheckingAuth] = useState(true);
+  const [loading, setLoading] = useState(true);
 
-  const today = new Date().toISOString().split("T")[0];
+  // ✅ LOKALES DATUM (kein UTC-Bug)
+  const today = new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD
   const now = new Date();
 
   useEffect(() => {
-    const checkAuthAndLoad = async () => {
-      // 🔐 AUTH CHECK
+    const loadDashboard = async () => {
+      /* 🔐 AUTH CHECK */
       const {
         data: { session },
       } = await supabase.auth.getSession();
@@ -54,33 +61,37 @@ export default function DashboardPage() {
         return;
       }
 
-      // 📊 DATA LOAD
+      /* 📊 LEADS */
       const { data: leadsData } = await supabase
         .from("leads")
         .select("id, status, created_at, last_contact");
 
+      /* 📅 HEUTIGE TERMINE */
       const { data: calendarData } = await supabase
         .from("calendar_entries")
         .select("id, person, title, start_time, end_time")
         .eq("date", today)
-        .order("start_time");
+        .order("start_time", { ascending: true });
 
-      setLeads(leadsData || []);
-      setTodayEntries(calendarData || []);
-      setCheckingAuth(false);
+      setLeads(leadsData ?? []);
+      setTodayEntries(calendarData ?? []);
+      setLoading(false);
     };
 
-    checkAuthAndLoad();
-  }, [today, router]);
+    loadDashboard();
+  }, [router, today]);
 
-  // ⏳ Loading while checking auth
-  if (checkingAuth) {
+  /* ================= LOADING ================= */
+
+  if (loading) {
     return (
       <div className="min-h-screen bg-gray-900 flex items-center justify-center text-gray-400">
         Lade Dashboard…
       </div>
     );
   }
+
+  /* ================= KPIs ================= */
 
   const leadsThisMonth = leads.filter((l) => {
     const d = new Date(l.created_at);
@@ -95,15 +106,16 @@ export default function DashboardPage() {
 
   const followUps = leads.filter((l) => {
     if (!l.last_contact) return true;
-    const diff =
+    const diffDays =
       (now.getTime() - new Date(l.last_contact).getTime()) /
       (1000 * 60 * 60 * 24);
-    return diff > 14;
+    return diffDays > 14;
   });
+
+  /* ================= RENDER ================= */
 
   return (
     <div className="min-h-screen bg-gray-900 p-10 text-white">
-      {/* 🔔 NOTIFICATIONS */}
       <NotificationPanel />
 
       <h1 className="text-3xl font-bold mb-8">📊 Dashboard</h1>
@@ -156,16 +168,20 @@ export default function DashboardPage() {
         >
           📞 Zu den Leads
         </Link>
-        <Link
-          href="/calendar"
-          className="px-6 py-3 bg-gray-700 rounded font-semibold"
-        >
-          📅 Zum Kalender
-        </Link>
+
+        {/* ✅ FIX: Router statt Link */}
+        <button
+  onClick={() => router.push("/kalender")}
+  className="px-6 py-3 bg-gray-700 rounded font-semibold"
+>
+  📅 Zum Kalender
+</button>
       </div>
     </div>
   );
 }
+
+/* ================= CARD ================= */
 
 function Card({
   title,
@@ -176,14 +192,14 @@ function Card({
   value: number;
   color?: "green" | "red" | "yellow";
 }) {
-  const colors: any = {
+  const colors: Record<string, string> = {
     green: "bg-green-600",
     red: "bg-red-600",
     yellow: "bg-yellow-500 text-black",
   };
 
   return (
-    <div className={`rounded-xl p-6 ${colors[color!] || "bg-gray-800"}`}>
+    <div className={`rounded-xl p-6 ${colors[color ?? ""] || "bg-gray-800"}`}>
       <div className="text-sm opacity-80">{title}</div>
       <div className="text-3xl font-bold">{value}</div>
     </div>
