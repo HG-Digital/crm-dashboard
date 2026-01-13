@@ -10,13 +10,11 @@ export async function middleware(req: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        get(name: string) {
-          return req.cookies.get(name)?.value;
-        },
-        set(name: string, value: string, options: any) {
+        get: (name) => req.cookies.get(name)?.value,
+        set: (name, value, options) => {
           res.cookies.set({ name, value, ...options });
         },
-        remove(name: string, options: any) {
+        remove: (name, options) => {
           res.cookies.set({ name, value: "", ...options });
         },
       },
@@ -27,18 +25,8 @@ export async function middleware(req: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const protectedPaths = [
-    "/dashboard",
-    "/leads",
-    "/finanzen",
-    "/kalender",
-  ];
-
-  const isProtected = protectedPaths.some((path) =>
-    req.nextUrl.pathname.startsWith(path)
-  );
-
-  if (!user && isProtected) {
+  // 👉 ALLES unter /app ist protected
+  if (!user && req.nextUrl.pathname.startsWith("/app")) {
     return NextResponse.redirect(new URL("/login", req.url));
   }
 
@@ -46,10 +34,5 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: [
-    "/dashboard/:path*",
-    "/leads/:path*",
-    "/finanzen/:path*",
-    "/kalender/:path*",
-  ],
+  matcher: ["/app/:path*"],
 };
