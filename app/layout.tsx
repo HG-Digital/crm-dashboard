@@ -17,7 +17,7 @@ export default function RootLayout({
         {/* Navigation */}
         <nav className="bg-gray-800 px-8 py-4 flex items-center justify-between shadow-md">
           <div className="text-xl font-bold">
-            🧠 Firmensoftware
+            🧠 HG Digital Solutions
           </div>
 
           <div className="flex gap-6 font-semibold">
