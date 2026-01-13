@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import NotificationPanel from "@/app/components/NotificationPanel";
 
 const supabase = createClient(
@@ -32,14 +33,28 @@ const PEOPLE = [
 ];
 
 export default function DashboardPage() {
+  const router = useRouter();
+
   const [leads, setLeads] = useState<Lead[]>([]);
   const [todayEntries, setTodayEntries] = useState<CalendarEntry[]>([]);
+  const [checkingAuth, setCheckingAuth] = useState(true);
 
   const today = new Date().toISOString().split("T")[0];
   const now = new Date();
 
   useEffect(() => {
-    const load = async () => {
+    const checkAuthAndLoad = async () => {
+      // 🔐 AUTH CHECK
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session) {
+        router.replace("/login");
+        return;
+      }
+
+      // 📊 DATA LOAD
       const { data: leadsData } = await supabase
         .from("leads")
         .select("id, status, created_at, last_contact");
@@ -52,10 +67,20 @@ export default function DashboardPage() {
 
       setLeads(leadsData || []);
       setTodayEntries(calendarData || []);
+      setCheckingAuth(false);
     };
 
-    load();
-  }, [today]);
+    checkAuthAndLoad();
+  }, [today, router]);
+
+  // ⏳ Loading while checking auth
+  if (checkingAuth) {
+    return (
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center text-gray-400">
+        Lade Dashboard…
+      </div>
+    );
+  }
 
   const leadsThisMonth = leads.filter((l) => {
     const d = new Date(l.created_at);
@@ -78,7 +103,6 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-gray-900 p-10 text-white">
-
       {/* 🔔 NOTIFICATIONS */}
       <NotificationPanel />
 
@@ -126,10 +150,16 @@ export default function DashboardPage() {
 
       {/* LINKS */}
       <div className="flex gap-4">
-        <Link href="/leads" className="px-6 py-3 bg-blue-600 rounded font-semibold">
+        <Link
+          href="/leads"
+          className="px-6 py-3 bg-blue-600 rounded font-semibold"
+        >
           📞 Zu den Leads
         </Link>
-        <Link href="/calendar" className="px-6 py-3 bg-gray-700 rounded font-semibold">
+        <Link
+          href="/calendar"
+          className="px-6 py-3 bg-gray-700 rounded font-semibold"
+        >
           📅 Zum Kalender
         </Link>
       </div>

@@ -8,87 +8,132 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
-type Comment = {
+/* ================= TYPES ================= */
+
+type CommentRow = {
   id: string
-  author: string
   content: string
   created_at: string
-  updated_at?: string
+  updated_at: string | null
+  author_id: string
+  profiles: {
+    name: string
+  }[] | null
 }
 
-const USERS = ['Richard Gumpinger', 'Simon Höld', 'Bennet Wylezol']
-
-export default function Comments({
-  entityType,
-  entityId,
-}: {
+type Props = {
   entityType: string
   entityId: string
-}) {
-  const [comments, setComments] = useState<Comment[]>([])
+}
+
+/* ================= COMPONENT ================= */
+
+export default function Comments({ entityType, entityId }: Props) {
+  const [comments, setComments] = useState<CommentRow[]>([])
   const [text, setText] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [user, setUser] = useState<any>(null)
+  const [loading, setLoading] = useState(false)
 
+  /* 🔐 SESSION LADEN (EXTREM WICHTIG FÜR RLS) */
+  useEffect(() => {
+    const loadSession = async () => {
+      const { data } = await supabase.auth.getSession()
+      setUser(data.session?.user ?? null)
+    }
+
+    loadSession()
+  }, [])
+
+  /* 📥 KOMMENTARE LADEN */
   const loadComments = async () => {
-    const { data } = await supabase
+    if (!entityId) return
+
+    const { data, error } = await supabase
       .from('comments')
-      .select('*')
+      .select(`
+        id,
+        content,
+        created_at,
+        updated_at,
+        author_id,
+        profiles (
+          name
+        )
+      `)
       .eq('entity_type', entityType)
       .eq('entity_id', entityId)
-      .order('created_at')
+      .order('created_at', { ascending: true })
 
-    setComments(data || [])
+    if (error) {
+      console.error('Load comments error:', error)
+      return
+    }
+
+    setComments(data ?? [])
   }
 
-  const extractMentions = (text: string) =>
-    USERS.filter((u) => text.includes(`@${u.split(' ')[0]}`))
+  useEffect(() => {
+    loadComments()
+  }, [entityId])
 
+  /* ➕ / ✏️ SPEICHERN */
   const addOrUpdateComment = async () => {
-    if (!text.trim()) return
+    if (!text.trim() || !user) return
+
+    setLoading(true)
 
     if (editingId) {
-      await supabase
+      const { error } = await supabase
         .from('comments')
         .update({
           content: text,
           updated_at: new Date().toISOString(),
         })
         .eq('id', editingId)
-    } else {
-      await supabase.from('comments').insert({
-        entity_type: entityType,
-        entity_id: entityId,
-        author: 'Richard Gumpinger',
-        content: text,
-      })
+        .eq('author_id', user.id)
 
-      // 🔔 Notifications
-      const mentions = extractMentions(text)
-      for (const name of mentions) {
-        await supabase.from('notifications').insert({
-          user_name: name,
-          message: `Du wurdest in einem Kommentar erwähnt`,
+      if (error) console.error('Update error:', error)
+    } else {
+      const { error } = await supabase
+        .from('comments')
+        .insert({
           entity_type: entityType,
           entity_id: entityId,
+          content: text,
+          author_id: user.id, // 🔥 MUSS auth.uid() SEIN
         })
+        .select()
+
+      if (error) {
+        console.error('Insert error:', error)
+        setLoading(false)
+        return
       }
     }
 
     setText('')
     setEditingId(null)
+    setLoading(false)
     loadComments()
   }
 
+  /* 🗑️ LÖSCHEN */
   const deleteComment = async (id: string) => {
-    await supabase.from('comments').delete().eq('id', id)
+    if (!user) return
+
+    const { error } = await supabase
+      .from('comments')
+      .delete()
+      .eq('id', id)
+      .eq('author_id', user.id)
+
+    if (error) console.error('Delete error:', error)
+
     loadComments()
   }
 
-  useEffect(() => {
-  if (entityId) {
-    loadComments()
-  }
-}, [entityId])
+  /* ================= UI ================= */
 
   return (
     <div className="mt-6 bg-gray-900 rounded-xl p-4">
@@ -103,31 +148,37 @@ export default function Comments({
             className="bg-gray-800 rounded-lg p-3 text-sm text-white"
           >
             <div className="flex justify-between mb-1">
-              <span className="font-semibold">{c.author}</span>
+              <span className="font-semibold">
+                {c.profiles?.[0]?.name ?? 'Unbekannt'}
+              </span>
               <span className="text-xs opacity-60">
                 {new Date(c.created_at).toLocaleString()}
               </span>
             </div>
 
-            <div className="mb-2 whitespace-pre-wrap">{c.content}</div>
-
-            <div className="flex gap-3 text-xs">
-              <button
-                onClick={() => {
-                  setEditingId(c.id)
-                  setText(c.content)
-                }}
-                className="text-blue-400 hover:underline"
-              >
-                Bearbeiten
-              </button>
-              <button
-                onClick={() => deleteComment(c.id)}
-                className="text-red-400 hover:underline"
-              >
-                Löschen
-              </button>
+            <div className="mb-2 whitespace-pre-wrap">
+              {c.content}
             </div>
+
+            {user?.id === c.author_id && (
+              <div className="flex gap-3 text-xs">
+                <button
+                  onClick={() => {
+                    setEditingId(c.id)
+                    setText(c.content)
+                  }}
+                  className="text-blue-400 hover:underline"
+                >
+                  Bearbeiten
+                </button>
+                <button
+                  onClick={() => deleteComment(c.id)}
+                  className="text-red-400 hover:underline"
+                >
+                  Löschen
+                </button>
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -135,14 +186,20 @@ export default function Comments({
       <textarea
         value={text}
         onChange={(e) => setText(e.target.value)}
-        placeholder="Kommentar schreiben… (@Richard @Simon @Bennet)"
+        placeholder={
+          user
+            ? 'Kommentar schreiben…'
+            : 'Bitte einloggen um zu kommentieren'
+        }
         className="w-full p-3 rounded bg-white text-black mb-3"
         rows={3}
+        disabled={!user || loading}
       />
 
       <button
         onClick={addOrUpdateComment}
-        className="px-4 py-2 bg-blue-600 rounded text-white font-semibold"
+        disabled={!user || loading}
+        className="px-4 py-2 bg-blue-600 rounded text-white font-semibold disabled:opacity-50"
       >
         {editingId ? 'Speichern' : 'Kommentar hinzufügen'}
       </button>

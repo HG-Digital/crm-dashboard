@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@supabase/supabase-js'
-import Comments from '../../components/Comments'
+import Comments from '@/app/components/Comments'
 import Skeleton from '@/app/components/Skeleton'
 
 const supabase = createClient(

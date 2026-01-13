@@ -9,13 +9,19 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
+/* ================= TYPES ================= */
+
 type Lead = {
   id: string;
   company: string;
   status: string;
-  last_contact?: string;
-  follow_up_date?: string;
+  last_contact: string | null;
+  follow_up_date: string | null;
+  created_at: string;
+  owner_id: string;
 };
+
+/* ================= UI HELPERS ================= */
 
 const statusColors: Record<string, string> = {
   Neu: "bg-gray-300 text-black",
@@ -26,7 +32,7 @@ const statusColors: Record<string, string> = {
   Abgelehnt: "bg-red-500 text-white",
 };
 
-const getRowHighlight = (lastContact?: string) => {
+const getRowHighlight = (lastContact?: string | null) => {
   if (!lastContact) return "";
 
   const diffDays =
@@ -39,34 +45,72 @@ const getRowHighlight = (lastContact?: string) => {
   return "";
 };
 
+/* ================= PAGE ================= */
+
 export default function LeadsPage() {
   const router = useRouter();
+
+  const [user, setUser] = useState<any>(null);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [company, setCompany] = useState("");
   const [statusFilter, setStatusFilter] = useState("Alle");
+  const [loading, setLoading] = useState(true);
 
+  /* 🔐 USER LADEN */
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      if (!data.user) {
+        alert("Nicht eingeloggt");
+        return;
+      }
+      setUser(data.user);
+    });
+  }, []);
+
+  /* 📥 LEADS LADEN */
   const loadLeads = async () => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("leads")
       .select("*")
       .order("created_at", { ascending: false });
 
-    if (data) setLeads(data);
+    if (error) {
+      console.error("Load leads error:", error);
+      alert(error.message);
+      return;
+    }
+
+    setLeads(data ?? []);
+    setLoading(false);
   };
 
-  const addLead = async () => {
-    if (!company.trim()) return;
+  useEffect(() => {
+    if (user) loadLeads();
+  }, [user]);
 
-    await supabase.from("leads").insert([
-      { company, status: "Neu" },
-    ]);
+  /* ➕ LEAD ANLEGEN */
+  const addLead = async () => {
+    if (!company.trim() || !user) return;
+
+    const { error } = await supabase.from("leads").insert({
+      company,
+      status: "Neu",
+      owner_id: user.id,
+    });
+
+    if (error) {
+      console.error("Insert lead error:", error);
+      alert(error.message);
+      return;
+    }
 
     setCompany("");
     loadLeads();
   };
 
+  /* 🔄 STATUS UPDATE */
   const updateStatus = async (id: string, status: string) => {
-    await supabase
+    const { error } = await supabase
       .from("leads")
       .update({
         status,
@@ -74,27 +118,44 @@ export default function LeadsPage() {
       })
       .eq("id", id);
 
+    if (error) {
+      console.error("Update status error:", error);
+      alert(error.message);
+      return;
+    }
+
     loadLeads();
   };
 
+  /* 📅 FOLLOW-UP UPDATE */
   const updateFollowUp = async (id: string, date: string) => {
-    await supabase
+    const { error } = await supabase
       .from("leads")
-      .update({ follow_up_date: date })
+      .update({ follow_up_date: date || null })
       .eq("id", id);
 
+    if (error) {
+      console.error("Update follow-up error:", error);
+      alert(error.message);
+      return;
+    }
+
     loadLeads();
   };
 
-  useEffect(() => {
-    loadLeads();
-  }, []);
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center text-white">
+        Lädt…
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-900 p-10 text-gray-100">
       <h1 className="text-3xl font-bold mb-6">📞 Lead-Übersicht</h1>
 
-      {/* Eingabe */}
+      {/* ➕ EINGABE */}
       <div className="mb-6 flex gap-3">
         <input
           value={company}
@@ -110,7 +171,7 @@ export default function LeadsPage() {
         </button>
       </div>
 
-      {/* Filter */}
+      {/* 🔍 FILTER */}
       <div className="mb-4 flex gap-3 items-center">
         <span>Status filtern:</span>
         <select
@@ -119,16 +180,13 @@ export default function LeadsPage() {
           className="px-3 py-2 rounded bg-white text-black"
         >
           <option>Alle</option>
-          <option>Neu</option>
-          <option>Kontaktiert</option>
-          <option>Interesse</option>
-          <option>Angebot gesendet</option>
-          <option>Gewonnen</option>
-          <option>Abgelehnt</option>
+          {Object.keys(statusColors).map((s) => (
+            <option key={s}>{s}</option>
+          ))}
         </select>
       </div>
 
-      {/* Tabelle */}
+      {/* 📋 TABELLE */}
       <div className="bg-white rounded-lg overflow-hidden">
         <table className="w-full">
           <thead className="bg-gray-800">
@@ -143,8 +201,7 @@ export default function LeadsPage() {
             {leads
               .filter(
                 (l) =>
-                  statusFilter === "Alle" ||
-                  l.status === statusFilter
+                  statusFilter === "Alle" || l.status === statusFilter
               )
               .map((lead, i) => (
                 <tr
@@ -168,16 +225,11 @@ export default function LeadsPage() {
                       onChange={(e) =>
                         updateStatus(lead.id, e.target.value)
                       }
-                      className={`px-3 py-1 rounded font-semibold ${
-                        statusColors[lead.status]
-                      }`}
+                      className={`px-3 py-1 rounded font-semibold ${statusColors[lead.status]}`}
                     >
-                      <option>Neu</option>
-                      <option>Kontaktiert</option>
-                      <option>Interesse</option>
-                      <option>Angebot gesendet</option>
-                      <option>Gewonnen</option>
-                      <option>Abgelehnt</option>
+                      {Object.keys(statusColors).map((s) => (
+                        <option key={s}>{s}</option>
+                      ))}
                     </select>
                   </td>
 
