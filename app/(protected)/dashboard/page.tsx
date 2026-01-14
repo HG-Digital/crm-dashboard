@@ -1,15 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
+import { supabase } from '@/lib/client'
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import NotificationPanel from "@/app/components/NotificationPanel";
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
 
 /* ================= TYPES ================= */
 

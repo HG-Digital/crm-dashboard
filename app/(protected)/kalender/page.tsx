@@ -1,7 +1,10 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { supabase } from '@/lib/supabase/client'
+import { getSupabaseBrowserClient } from '@/lib/supabase/browser'
+
+const supabase = getSupabaseBrowserClient()
+
 import dayjs from 'dayjs'
 import 'dayjs/locale/de'
 

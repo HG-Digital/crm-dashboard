@@ -10,12 +10,24 @@ export async function middleware(req: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        get: (name) => req.cookies.get(name)?.value,
-        set: (name, value, options) => {
-          res.cookies.set({ name, value, ...options });
+        get: (key) => req.cookies.get(key)?.value,
+        set: (key, value, options) => {
+          res.cookies.set({
+            name: key,
+            value,
+            ...options,
+            sameSite: "lax",
+            secure: process.env.NODE_ENV === "production",
+          });
         },
-        remove: (name, options) => {
-          res.cookies.set({ name, value: "", ...options });
+        remove: (key, options) => {
+          res.cookies.set({
+            name: key,
+            value: "",
+            ...options,
+            sameSite: "lax",
+            secure: process.env.NODE_ENV === "production",
+          });
         },
       },
     }
@@ -25,7 +37,6 @@ export async function middleware(req: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // 👉 ALLES unter /app ist protected
   if (!user && req.nextUrl.pathname.startsWith("/app")) {
     return NextResponse.redirect(new URL("/login", req.url));
   }

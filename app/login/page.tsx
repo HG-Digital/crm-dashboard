@@ -2,22 +2,18 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createBrowserClient } from '@supabase/ssr'
+import { getSupabaseBrowserClient } from '@/lib/supabase/browser'
 
 export default function LoginPage() {
   const router = useRouter()
-
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
+  const supabase = getSupabaseBrowserClient()
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
-  const login = async () => {
+  async function login() {
     setLoading(true)
     setError(null)
 
@@ -33,47 +29,38 @@ export default function LoginPage() {
       return
     }
 
-    // ✅ DAS HAT GEFEHLT
-    router.refresh()
-    router.push('/dashboard')
+    // EXTREM WICHTIG
+    window.location.href = '/dashboard'
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white">
-      <div className="w-full max-w-md bg-gray-900/80 backdrop-blur rounded-2xl p-8 shadow-2xl border border-gray-700">
-        <h1 className="text-3xl font-bold mb-2 text-center">🔐 Login</h1>
-        <p className="text-gray-400 text-center mb-8">
-          Zugriff auf das CRM Dashboard
-        </p>
+    <div className="min-h-screen flex items-center justify-center bg-black text-white">
+      <div className="w-full max-w-md bg-gray-900 p-8 rounded-xl">
+        <h1 className="text-2xl font-bold mb-6 text-center">Login</h1>
 
-        <div className="mb-4">
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="name@firma.de"
-            className="w-full px-4 py-3 rounded-lg bg-gray-800 border border-gray-600"
-          />
-        </div>
+        <input
+          className="w-full mb-3 p-3 rounded bg-gray-800"
+          placeholder="E-Mail"
+          value={email}
+          onChange={e => setEmail(e.target.value)}
+        />
 
-        <div className="mb-6">
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="••••••••"
-            className="w-full px-4 py-3 rounded-lg bg-gray-800 border border-gray-600"
-          />
-        </div>
+        <input
+          type="password"
+          className="w-full mb-4 p-3 rounded bg-gray-800"
+          placeholder="Passwort"
+          value={password}
+          onChange={e => setPassword(e.target.value)}
+        />
 
-        {error && <p className="text-red-400 mb-4">{error}</p>}
+        {error && <p className="text-red-400 mb-3">{error}</p>}
 
         <button
           onClick={login}
           disabled={loading}
-          className="w-full py-3 rounded-lg bg-blue-600 hover:bg-blue-700"
+          className="w-full bg-indigo-600 py-3 rounded"
         >
-          {loading ? 'Einloggen…' : 'Einloggen'}
+          {loading ? '...' : 'Einloggen'}
         </button>
       </div>
     </div>

@@ -1,20 +1,24 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabase/client";
+import { getSupabaseBrowserClient } from '@/lib/supabase/browser'
+
+const supabase = getSupabaseBrowserClient()
 
 export default function Home() {
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      if (!data.user) {
-        window.location.href = "/login";
+useEffect(() => {
+  supabase.auth.getUser().then(
+    (res: { data: { user: any } }) => {
+      if (!res.data.user) {
+        window.location.href = "/login"
       } else {
-        setLoading(false);
+        setLoading(false)
       }
-    });
-  }, []);
+    }
+  )
+}, [])
 
   if (loading) {
     return <div className="p-8">Lade...</div>;

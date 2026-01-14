@@ -2,15 +2,10 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@supabase/supabase-js'
+import { supabase } from '@/lib/client'
 import Comments from '@/app/components/Comments'
 import Skeleton from '@/app/components/Skeleton'
 import LeadCalendarTimeline from '@/app/components/LeadCalendarTimeline'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
 
 export default function LeadDetailClient({ id }: { id: string }) {
   const router = useRouter()
